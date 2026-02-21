@@ -38,6 +38,9 @@
 ;;;; Parsing
 
 ;; Whitespace + Comments
+;; See
+;; https://github.com/ron-rs/ron/blob/master/docs/grammar.md
+;; for the definitions on whitespace in RON.
 
 (rx-define ron--whitespace-single
   (in ?\n ?\t ?\r ?\s ?\u000B ?\u000C
@@ -47,11 +50,16 @@
   (| ron--whitespace-single "/"))
 
 (define-inline ron-skip-whitespace ()
+  "Skip past the whitespace at point."
   (inline-quote
    (while (looking-at-p (rx ron--whitespace-pre-value))
      (cond
+      ;; Skip line if it is a single line comment.
       ((looking-at-p (rx "//"))
        (forward-line))
+
+      ;; Skip nested block, handling recursive nested
+      ;; blocks in the process.
       ((looking-at-p (rx "/*"))
        (let ((depth 1))
          (forward-char 2)
@@ -65,6 +73,8 @@
              (setq depth (1- depth))
              (forward-char 2))
             (t (forward-char))))))
+
+      ;; Handle normal whitespace
       (t (or (looking-at (rx ron--whitespace-single))
              (signal 'ron-end-of-file ()))
          (goto-char (match-end 0)))))))
