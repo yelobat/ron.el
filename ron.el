@@ -109,7 +109,7 @@ At the end of the accessible region of the buffer, return 0."
 ;; Numbers
 ;; See
 ;; https://github.com/ron-rs/ron/blob/master/docs/grammar.md
-;; for the definitions on commas in RON.
+;; for the definitions on numbers in RON.
 
 (rx-define ron--integer-suffix
   (: (| ?i ?u)
@@ -192,6 +192,27 @@ At the end of the accessible region of the buffer, return 0."
 
     (goto-char (match-end 0))
     (string-to-number (concat sign number) base)))
+
+;; Bytes
+;; See
+;; https://github.com/ron-rs/ron/blob/master/docs/grammar.md
+;; for the definitions on bytes in RON.
+
+(rx-define ron--byte
+  (: ?b ?'
+     (| ascii
+        (: "\\"
+           (| (: ?x xdigit xdigit)
+              (in "ntr\\0"))))
+     ?'))
+
+(defun ron-read-byte ()
+  "Read a RON byte at point."
+  (ron-skip-whitespace)
+  (or (looking-at (rx ron--byte))
+      (signal 'ron-byte-format (list (point))))
+  (goto-char (match-end 0))
+  (string-to-char (substring (match-string 0) 2 -1)))
 
 (provide 'ron)
 ;;; ron.el ends here
