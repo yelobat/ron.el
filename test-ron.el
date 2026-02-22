@@ -49,5 +49,29 @@
     (ron-skip-whitespace)
     (buffer-substring (point) (point-max))) "505")))
 
+;; Tests: Commas
+
+(ert-deftest simple-comma-test ()
+  (should (string-equal (with-temp-buffer
+    (save-excursion
+      (insert ","))
+    (ron-read-comma)
+    (buffer-substring (point) (point-max))) "")))
+
+(ert-deftest whitespace-comma-test ()
+  (should (string-equal (with-temp-buffer
+    (save-excursion
+      (insert "    /* A comment before a comma */,"))
+    (ron-read-comma)
+    (buffer-substring (point) (point-max))) "")))
+
+(ert-deftest whitespace-and-more-commas-test ()
+  (should (string-equal (with-temp-buffer
+    (save-excursion
+      (insert "    /* A comment /* in a comment */ before a comma */\n,\n/**/,"))
+    (ron-read-comma)
+    (ron-read-comma)
+    (buffer-substring (point) (point-max))) "")))
+
 (provide 'test-ron)
 ;;; test-ron.el ends here
