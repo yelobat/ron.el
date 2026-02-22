@@ -203,7 +203,7 @@ At the end of the accessible region of the buffer, return 0."
      (| ascii
         (: "\\"
            (| (: ?x xdigit xdigit)
-              (in "ntr\\0"))))
+              (in "ntr\\0\"'"))))
      ?'))
 
 (defun ron-read-byte ()
