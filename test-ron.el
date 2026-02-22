@@ -149,5 +149,25 @@
                  (insert "/* // Comment*/\n\n\n\t\t\n.540E54"))
                (ron-read-number)) 5.4e53)))
 
+;; Tests: Bytes
+
+(ert-deftest byte-ascii-test ()
+  (should (= (with-temp-buffer
+               (save-excursion
+                 (insert "/* // Comment*/\n\n\n\t\t\n  b'f'"))
+               (ron-read-byte)) ?f)))
+
+(ert-deftest byte-escaped-ascii-test ()
+  (should (= (with-temp-buffer
+               (save-excursion
+                 (insert "/* // Comment*/\n\n\n\t\t\n  b'\0'"))
+               (ron-read-byte)) ?\0)))
+
+(ert-deftest byte-escaped-byte-test ()
+  (should (= (with-temp-buffer
+               (save-excursion
+                 (insert "/* // Comment*/\n\n\n\t\t\n  b'\x77'"))
+               (ron-read-byte)) ?\x77)))
+
 (provide 'test-ron)
 ;;; test-ron.el ends here
