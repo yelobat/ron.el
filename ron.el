@@ -35,6 +35,7 @@
 (define-error 'ron-end-of-file "End of file when parsing RON"
               '(end-of-file ron-error))
 (define-error 'ron-comma-error "Missing comma" 'ron-error)
+(define-error 'ron-number-format "Invalid Number format" 'ron-error)
 
 ;;;; Reader utilities
 
@@ -98,12 +99,99 @@ At the end of the accessible region of the buffer, return 0."
 ;; https://github.com/ron-rs/ron/blob/master/docs/grammar.md
 ;; for the definitions on commas in RON.
 
-(defun ron-read-comma ()
+(defun ron-skip-comma ()
   "Read a comma at point."
   (ron-skip-whitespace)
   (if (= (ron-peek) ?,)
       (ron-advance)
     (signal 'ron-comma-error (list "," (ron-peek)))))
+
+;; Numbers
+;; See
+;; https://github.com/ron-rs/ron/blob/master/docs/grammar.md
+;; for the definitions on commas in RON.
+
+(rx-define ron--integer-suffix
+  (: (| ?i ?u)
+     (| "8" "16" "32"
+        "64" "128")))
+
+(rx-define ron--unsigned-binary
+  (: "0b"
+     (: (| ?0 ?1)
+        (* (| ?0 ?1 ?_)))))
+
+(rx-define ron--unsigned-octal
+  (: "0o"
+     (| (in "0-7"))
+     (* (| (in "0-7" "_")))))
+
+(rx-define ron--unsigned-hexadecimal
+  (: "0x"
+     (| xdigit)
+     (* (| xdigit ?_))))
+
+(rx-define ron--unsigned-decimal
+  (: digit
+     (* (| digit ?_))))
+
+(rx-define ron--unsigned
+  (| ron--unsigned-binary
+     ron--unsigned-octal
+     ron--unsigned-hexadecimal
+     ron--unsigned-decimal))
+
+(rx-define ron--integer
+  (: (? (| ?- ?+))
+     ron--unsigned
+     (? ron--integer-suffix)))
+
+(rx-define ron--float-suffix
+  (: ?f (| "32" "64")))
+
+(rx-define ron--float
+  (: (? (| ?- ?+))
+     (| "inf" "NaN"
+        (| (: ?. digit (* (| digit ?_)))
+           (: digit (* (| digit ?_)) (? ?. (* digit)))))
+     (? (in "Ee") (? (| ?- ?+)) (* (| digit ?_)))
+     (? ron--float-suffix)))
+
+(defun ron-read-number ()
+  "Read a RON number at point."
+  (ron-skip-whitespace)
+  (let ((case-fold-search nil)
+        (sign "+")
+        (base 10)
+        number)
+
+    ;; Skip the optional sign, changing the sign
+    ;; if it is negative.
+    (when (looking-at (rx (in "+-")))
+      (when (= (ron-peek) ?-)
+        (setq sign "-"))
+      (ron-advance))
+
+    ;; Check the various cases
+    (cond
+     ((looking-at-p "0x")
+      (looking-at (rx ron--integer))
+      (setq number (substring (match-string 0) 2))
+      (setq base 16))
+     ((looking-at-p "0b")
+      (looking-at (rx ron--integer))
+      (setq number (substring (match-string 0) 2))
+      (setq base 2))
+     ((looking-at-p "0o")
+      (looking-at (rx ron--integer))
+      (setq number (substring (match-string 0) 2))
+      (setq base 8))
+     (t (or (looking-at (rx (| ron--float ron--integer)))
+            (signal 'ron-number-format (list (point))))
+        (setq number (match-string 0))))
+
+    (goto-char (match-end 0))
+    (string-to-number (concat sign number) base)))
 
 (provide 'ron)
 ;;; ron.el ends here
