@@ -96,7 +96,38 @@
   (macroexpand `(rx (: "Some" (| ron--whitespace-single ?\())))
   "The optional Some reserved tuple variant in RON.")
 
-;;;; Reader utilities
+;; Keyword encoding
+
+(defun ron-encode-keyword (keyword)
+  "Encode KEYWORD as a RON value."
+  (cond ((eq keyword t)  "true")
+        ((eq keyword ron-false)  "false")))
+
+;;;; Utilities
+
+;; Predicates
+
+(defun ron-alist-p (list)
+  "Non-nil if and only if LIST is an alist with simple keys."
+  (declare (pure t) (side-effect-free error-free))
+  (if (= (safe-length list) 0)
+      nil
+    (while (and (consp (car-safe list))
+                (atom (caar list))
+                (setq list (cdr list))))
+    (null list)))
+
+(defun ron-plist-p (list)
+  "Non-nil if and only if LIST is a plist with keyword keys."
+  (declare (pure t) (side-effect-free error-free))
+  (if (= (safe-length list) 0)
+      nil
+    (while (and (keywordp (car-safe list))
+                (consp (cdr list))
+                (setq list (cddr list))))
+    (null list)))
+
+;; Reader utilities
 
 (define-inline ron-advance (&optional n)
   "Advances N characters forward, or 1 character if N is nil.
@@ -105,13 +136,13 @@ and signal an error."
   (inline-quote (forward-char ,n)))
 
 (define-inline ron-peek ()
-  "Return the N + 1 characters after point, or the character at point if N is nil.
+  "Return the character at point.
 At the end of the accessible region of the buffer, return 0."
   (inline-quote (following-char)))
 
 ;;;; Reader
 
-;; TODO Figure out how to make this run faster
+;; TODO Optimize this
 (defmacro ron-readtable-dispatch (char)
   "Dispatch reader function for CHAR at point.
 If CHAR is nil, signal `ron-end-of-file'."
@@ -188,6 +219,116 @@ Advances point just passed the RON object."
   (with-temp-buffer
     (insert-file-contents file)
     (ron-read)))
+
+;; Encoder utilities
+
+(defmacro ron--with-output-to-string (&rest body)
+  "Eval BODY in a temporary buffer bound to `standard-output'.
+Return the resulting buffer contents as a string."
+  (declare (indent 0) (debug t))
+  `(with-output-to-string
+     (with-current-buffer standard-output
+       (setq-local inhibit-modification-hooks t)
+       ,@body)))
+
+;;;; Encoder
+
+(defun ron--print (object)
+  "Like `ron-encode', but insert or print the RON OBJECT at point."
+  (cond
+   ((ron-encode-keyword object))
+   ((ron-plist-p object) (ron--print-struct object))
+   ((ron-alist-p object) (ron--print-alist object))
+   ((stringp object) (ron--print-string object))
+   ((listp object) (ron--print-array object))
+   ((symbolp object) (insert (symbol-name object)))
+   ((numberp object) (prin1 object))
+   ((vectorp object) (ron--print-vector object))
+   ((hash-table-p object) (ron--print-unordered-map object))
+   (t (signal 'ron-end-of-file ()))))
+
+(defun ron--print-vector (vector)
+  "Insert a RON representation of VECTOR at point."
+  (insert ?\[)
+  (unless (length= vector 0)
+    (let ((first t))
+      (mapc (lambda (elt)
+              (if first
+                  (setq first nil)
+                (insert ?,))
+              (ron--print elt))
+            vector)))
+  (insert ?\])
+  vector)
+
+(defun ron--print-alist (alist)
+  "Insert a RON representation of ALIST at point."
+  (insert ?\()
+  (unless (length= alist 0)
+    (let ((first t))
+      (mapc (lambda (elt)
+              (if first
+                  (setq first nil)
+                (insert ?,))
+              (let ((key (car elt))
+                    (value (cdr elt)))
+                (ron--print key)
+                (insert ?:)
+                (ron--print value)))
+            alist)))
+  (insert ?\))
+  alist)
+
+(defun ron--print-struct (struct)
+  "Insert a RON representation of STRUCT at point."
+  (let ((identifier (substring (prin1-to-string (car struct)) 1))
+        (list (cadr struct)))
+    (insert identifier)
+    (ron--print list)))
+
+(defun ron--print-array (array)
+  "Insert a RON representation of ARRAY at point."
+  (insert ?\()
+  (let ((first t))
+    (mapc (lambda (elt)
+            (if first
+                (setq first nil)
+              (insert ?,))
+            (ron--print elt))
+          array))
+  (insert ?\))
+  array)
+
+(defun ron--print-pair (key val)
+  "Insert a RON representation of KEY VAL pair at point."
+  (ron--print key)
+  (insert ?:)
+  (ron--print val)
+  (insert ?,))
+
+(defun ron--print-unordered-map (map)
+  "Insert a RON representation of MAP at point."
+  (insert ?{)
+  (unless (map-empty-p map)
+    (map-do #'ron--print-pair map)
+    (delete-char (- 1)))
+  (insert ?}))
+
+(defun ron--print-string (string)
+  "Insert a RON representation of STRING at point."
+  (insert ?\")
+  (princ string)
+  (insert ?\")
+  string)
+
+(defun ron-encode (object)
+  "Return a RON representation of OBJECT as a string.
+
+OBJECT should have a structure like one returned by `ron-read'.
+If an error is detected during encoding, an error based on
+`ron-error' is signaled."
+
+  (ron--with-output-to-string (ron--print object)))
 
 ;;;; Parsing
 
@@ -277,6 +418,9 @@ Advances point just passed the RON object."
      (? (in "Ee") (? (| ?- ?+)) (* (| digit ?_)))
      (? ron--float-suffix)))
 
+;; TODO This is a little untidy, need to fix
+;; this at some point due to fighting over
+;; parsing float and integers near the end
 (defun ron-read-number ()
   "Read a RON number at point."
   (let ((sign "+")
@@ -294,21 +438,25 @@ Advances point just passed the RON object."
     (cond
      ((looking-at-p "0x")
       (looking-at (rx ron--integer))
-      (setq number (substring (string-replace "_" "" (match-string 0)) 2))
+      (setq number (substring (match-string 0) 2))
       (setq base 16))
      ((looking-at-p "0b")
       (looking-at (rx ron--integer))
-      (setq number (substring (string-replace "_" "" (match-string 0)) 2))
+      (setq number (substring (match-string 0) 2))
       (setq base 2))
      ((looking-at-p "0o")
       (looking-at (rx ron--integer))
-      (setq number (substring (string-replace "_" "" (match-string 0)) 2))
+      (setq number (substring (match-string 0) 2))
       (setq base 8))
      (t (or (looking-at (rx (| ron--float ron--integer)))
             (signal 'ron-number-format (list (point))))
         (setq number (match-string 0))))
 
+    (setq number (substring (string-replace "_" "" number)))
     (goto-char (match-end 0))
+    (when (looking-at (rx ron--integer-suffix))
+      (goto-char (match-end 0)))
+
     (or (looking-at-p (rx ron--post-value))
         (signal 'ron-number-format (list (point))))
     (string-to-number (concat sign number) base)))
@@ -482,7 +630,7 @@ Advances point just passed the RON object."
     (ron-advance)
     (or (looking-at (rx ron--post-value))
         (signal 'ron-list-format (list (point))))
-    (nreverse elements)))
+    (nreverse (vconcat elements))))
 
 ;; Map
 ;; See
@@ -588,7 +736,7 @@ Advances point just passed the RON object."
     (or (looking-at (rx ron--post-value))
         (signal 'ron-tuple-format (list (point))))
 
-    (nreverse (vconcat elements))))
+    (nreverse elements)))
 
 (defun ron-read-named-tuple ()
   "Read a RON named tuple object at point."
@@ -648,34 +796,34 @@ Advances point just passed the RON object."
     ;; Save a restore point
     (setq restore (point))
 
-    ;; Check if this is a tuple
-    (if (/= (ron-peek) ?\()
-        nil
+    ;; Skip the '('
+    (ron-advance)
 
-      ;; Skip the '('
-      (ron-advance)
+    (when (/= (ron-peek) ?\))
+      ;; Read the value (or key)
+      (ron-read)
 
-      (when (/= (ron-peek) ?\))
-        ;; Read the value (or key)
-        (ron-read)
+      ;; Skip the whitespace
+      (ron-skip-whitespace)
 
-        ;; Skip the whitespace
-        (ron-skip-whitespace)
+      ;; Determine the case
+      (cond
+       ((= (ron-peek) ?\)) (setq variant 'tuple))
+       ((= (ron-peek) ?,) (setq variant 'tuple))
+       ((= (ron-peek) ?:) (setq variant 'named))
+       (t (signal 'ron-tuple-format (list (ron-peek))))))
 
-        ;; Determine the case
-        (cond
-         ((= (ron-peek) ?\)) (setq variant 'tuple))
-         ((= (ron-peek) ?,) (setq variant 'tuple))
-         ((= (ron-peek) ?:) (setq variant 'named))
-         (t (signal 'ron-tuple-format (list (ron-peek))))))
+    ;; Restore the save point
+    (goto-char restore)
 
-      ;; Restore the save point
-      (goto-char restore)
+    ;; Dispatch the case
+    (if (eq variant 'tuple)
+        (ron-read-tuple)
+      (ron-read-named-tuple))))
 
-      ;; Dispatch the case
-      (if (eq variant 'tuple)
-          (ron-read-tuple)
-        (ron-read-named-tuple)))))
+(with-temp-buffer
+  (save-excursion (insert "()"))
+  (ron-read-tuple-cases))
 
 (defun ron-read-struct ()
   "Read a RON struct object at point."
@@ -690,10 +838,10 @@ Advances point just passed the RON object."
       (ron-skip-whitespace)
 
       ;; Read the tuple cases
-      (let ((tuple (ron-read-tuple-cases)))
-        (if tuple
-            (list identifier tuple)
-          identifier)))))
+      (if (/= (ron-peek) ?\()
+          identifier
+        (let ((tuple (ron-read-tuple-cases)))
+          (list (intern (concat ":" (symbol-name identifier))) tuple))))))
 
 ;; Identifier
 ;; See

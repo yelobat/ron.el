@@ -131,14 +131,14 @@
   (should (equal (with-temp-buffer
                    (save-excursion
                      (insert "/* Leading comment */\n [] // Trailing comment"))
-                   (ron-read)) (list))))
+                   (ron-read)) (vector))))
 
 (ert-deftest list-elements-test ()
   (should (equal (with-temp-buffer
                    (save-excursion
                      (insert "/* Leading comment */\n [/*
 Comments allowed with elements*/ 5, 2] // Trailing comment"))
-                   (ron-read)) (list 5 2))))
+                   (ron-read)) (vector 5 2))))
 
 ;; Tests: Maps
 
@@ -175,13 +175,13 @@ Comments allowed with elements*/ 5, 2] // Trailing comment"))
   (should (equal (with-temp-buffer
                    (save-excursion
                      (insert "/* Leading comment */\n () // Trailing comment"))
-                   (ron-read)) (vector))))
+                   (ron-read)) (list))))
 
 (ert-deftest tuple-elements-test ()
   (should (equal (with-temp-buffer
                    (save-excursion
                      (insert "/* Leading comment */\n ((()), 2, /**/ 3) // Trailing comment"))
-                   (ron-read)) (vector (vector (vector)) 2 3))))
+                   (ron-read)) (list (list (list)) 2 3))))
 
 ;; Tests: Boolean
 
@@ -231,19 +231,19 @@ Comments allowed with elements*/ 5, 2] // Trailing comment"))
   (should (eq (with-temp-buffer
                 (save-excursion
                   (insert "/* Leading comment */\n () // Trailing comment"))
-                (ron-read)) (vector))))
+                (ron-read)) (list))))
 
 (ert-deftest struct-empty-labelled-test ()
   (should (equal (with-temp-buffer
                 (save-excursion
                   (insert "/* Leading comment */\n Label() // Trailing comment"))
-                (ron-read)) (list 'Label (vector)))))
+                (ron-read)) (list (intern ":Label") (list)))))
 
 (ert-deftest struct-populated-test ()
   (should (equal (with-temp-buffer
                 (save-excursion
                   (insert "/* Leading comment */\n (5, 4, 1, 2, 3) // Trailing comment"))
-                (ron-read)) (vector 5 4 1 2 3))))
+                (ron-read)) (list 5 4 1 2 3))))
 
 (ert-deftest struct-populated-named-test ()
   (let (alist)
@@ -259,7 +259,57 @@ Comments allowed with elements*/ 5, 2] // Trailing comment"))
           (insert "/* Leading comment */\n (id: 16, /**/ five: 9, 6: hey, 9: four) // Trailing comment"))
         (ron-read)) alist))))
 
-;; Tests: File Reading
+;; Tests: Encoding
+
+(defun assert-ron-encoder (string)
+  "Return t if the same object for STRING is encodable, nil otherwise."
+  (let* ((ron1 (ron-read-from-string string))
+         (ron2 (ron-read-from-string (ron-encode ron1))))
+    (equal ron1 ron2)))
+
+;; Assert String encoding
+(ert-deftest encoding-simple-string-test ()
+  (should (assert-ron-encoder "\"Hello, World\"")))
+
+(ert-deftest encoding-commented-string-test ()
+  (should (assert-ron-encoder "\n\n\t/*Leading \n*/\n\"Hello, World\" \n// Trailing")))
+
+;; Assert Number encoding
+(ert-deftest encoding-simple-float-test ()
+  (should (assert-ron-encoder "-4.1545e17f32")))
+
+(ert-deftest encoding-simple-integer-test ()
+  (should (assert-ron-encoder "-4i32")))
+
+(ert-deftest encoding-commented-float-test ()
+  (should (assert-ron-encoder "/* Leading comment \n\n */\n+4.2e1\t")))
+
+(ert-deftest encoding-commented-integer-test ()
+  (should (assert-ron-encoder "/* Leading comment \n\n */\n+9i16\t")))
+
+;; Assert Symbol encoding
+(ert-deftest encoding-simple-symbol-test ()
+  (should (assert-ron-encoder "Testing")))
+
+(ert-deftest encoding-commented-symbol-test ()
+  (should (assert-ron-encoder "/*\n\n\n*/Testing // Leading")))
+
+;; Assert Struct encoding
+(ert-deftest encoding-empty-struct/tuple-test ()
+  (should (assert-ron-encoder "()")))
+
+(ert-deftest encoding-populated-struct/tuple-test ()
+  (should (assert-ron-encoder "(\"Hello\" /**/, \n5, (), [], Testing)")))
+
+(ert-deftest encoding-labeled-struct-test ()
+  (should (assert-ron-encoder "Id(\"Hello\" /**/, \n5, (), [], Testing)")))
+
+;; Assert List encoding
+(ert-deftest encoding-empty-list/tuple-test ()
+  (should (assert-ron-encoder "[]")))
+
+(ert-deftest encoding-populated-list/tuple-test ()
+  (should (assert-ron-encoder "[\"Hello\" /**/, \n5, (), [], Testing]")))
 
 (provide 'test-ron)
 ;;; test-ron.el ends here
