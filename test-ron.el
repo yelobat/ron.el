@@ -261,11 +261,13 @@ Comments allowed with elements*/ 5, 2] // Trailing comment"))
 
 ;; Tests: Encoding
 
-(defun assert-ron-encoder (string)
-  "Return t if the same object for STRING is encodable, nil otherwise."
+(defun assert-ron-encoder (string &optional eqp)
+  "Return t if the same object for STRING is encodable, nil otherwise.
+If EQP is non-nil, it is used to compare RON1 and RON2 for equality."
   (let* ((ron1 (ron-read-from-string string))
-         (ron2 (ron-read-from-string (ron-encode ron1))))
-    (equal ron1 ron2)))
+         (ron2 (ron-read-from-string (ron-encode ron1)))
+         (eq (or eqp #'equal)))
+    (funcall eq ron1 ron2)))
 
 ;; Assert String encoding
 (ert-deftest encoding-simple-string-test ()
@@ -310,6 +312,20 @@ Comments allowed with elements*/ 5, 2] // Trailing comment"))
 
 (ert-deftest encoding-populated-list/tuple-test ()
   (should (assert-ron-encoder "[\"Hello\" /**/, \n5, (), [], Testing]")))
+
+;; Assert Map encoding
+(ert-deftest encoding-empty-map ()
+  (should (assert-ron-encoder "{}" #'eqhash)))
+
+(ert-deftest encoding-populated-map ()
+  (should (assert-ron-encoder "\n{\nKey\n:\n Value\n,\nAnotherKey\n:\n 7\n}\n" #'eqhash)))
+
+;; Assert Optional encoding
+(ert-deftest encoding-some-test ()
+  (should (assert-ron-encoder "\nSome(/* Inside */None/* Inside */)// Trailing comment\n")))
+
+(ert-deftest encoding-none-test ()
+  (should (assert-ron-encoder "/* Leading comment \n\n */ None // Trailing comment\n\n\n")))
 
 (provide 'test-ron)
 ;;; test-ron.el ends here
