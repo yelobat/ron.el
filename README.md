@@ -23,7 +23,7 @@ make test
 
 Contributions are welcome, either open an issue or a pull request. Any pull
 requests regarding the parser functionality: I would suggest that it is paired
-with appropriate and exhaustive test cases inside of `ron-test.el`.
+with appropriate and exhaustive test cases inside of `test-ron.el`.
 
 ## License
 
