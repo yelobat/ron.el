@@ -28,6 +28,7 @@
 ;;; Code:
 
 (require 'map)
+(require 'cl-lib)
 
 ;;;; Parameters
 
@@ -237,6 +238,8 @@ Return the resulting buffer contents as a string."
   "Like `ron-encode', but insert or print the RON OBJECT at point."
   (cond
    ((ron-encode-keyword object))
+   ((ron-some-p object) (ron--print-some object))
+   ((ron-none-p object) (ron--print-none object))
    ((ron-plist-p object) (ron--print-struct object))
    ((ron-alist-p object) (ron--print-alist object))
    ((stringp object) (ron--print-string object))
@@ -320,6 +323,18 @@ Return the resulting buffer contents as a string."
   (princ string)
   (insert ?\")
   string)
+
+(defun ron--print-some (some)
+  "Insert a RON representation of SOME at point."
+  (insert "Some(")
+  (ron--print (ron-some-value some))
+  (insert ?\))
+  some)
+
+(defun ron--print-none (none)
+  "Insert a RON representation of NONE at point."
+  (insert "None")
+  none)
 
 (defun ron-encode (object)
   "Return a RON representation of OBJECT as a string.
@@ -566,13 +581,16 @@ If an error is detected during encoding, an error based on
 ;; https://github.com/ron-rs/ron/blob/master/docs/grammar.md
 ;; for the definitions on Optional in RON.
 
+(cl-defstruct ron-some value)
+(cl-defstruct ron-none)
+
 (defun ron-new-some (value)
   "Create a list which represents the Some tuple variant with VALUE."
-  (list 'Some value))
+  (make-ron-some :value value))
 
 (defun ron-new-none ()
   "Create a list which represents the Some tuple variant, as None."
-  (list 'None nil))
+  (make-ron-none))
 
 (defun ron-read-optional ()
   "Read a RON optional object at point."
