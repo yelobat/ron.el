@@ -337,7 +337,7 @@ Has no effect if `ron-encoding-pretty-print' is nil."
                 (let ((key (car elt))
                       (value (cdr elt)))
                   (ron--print key)
-                  (insert ?:)
+                  (insert ron--print-keyval-separator)
                   (ron--print value)))
               alist)))
     (or ron-encoding-lisp-style-closings
