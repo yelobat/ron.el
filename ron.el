@@ -251,7 +251,7 @@ Advances point just passed the RON object."
 With prefix argument MINIMIZE, minimize it instead."
   (with-temp-file file
       (insert (ron-encode object))
-    (ron-pretty-print-buffer minimize)))
+      (ron-pretty-print-buffer minimize)))
 
 ;; Encoder utilities
 
@@ -355,18 +355,13 @@ Has no effect if `ron-encoding-pretty-print' is nil."
 (defun ron--print-array (array)
   "Insert a RON representation of ARRAY at point."
   (insert ?\()
-  (ron--with-indentation
-    (ron--print-indentation)
-    (let ((first t))
-      (mapc (lambda (elt)
-              (if first
-                  (setq first nil)
-                (insert ?,)
-                (ron--print-indentation))
-              (ron--print elt))
-            array)))
-  (or ron-encoding-lisp-style-closings
-      (ron--print-indentation))
+  (let ((first t))
+    (mapc (lambda (elt)
+            (if first
+                (setq first nil)
+              (insert ?,))
+            (ron--print elt))
+          array))
   (insert ?\))
   array)
 

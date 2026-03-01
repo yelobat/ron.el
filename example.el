@@ -85,6 +85,7 @@ Assume length of each vector in VS have length of 3."
 
 ;; Let's write the output to another file.
 (ron-write-file example-scene example-modified-scene-path)
+(find-file example-modified-scene-path)
 
 (provide 'example)
 ;;; example.el ends here
