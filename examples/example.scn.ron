@@ -1,0 +1,38 @@
+(
+    resources: {},
+    entities: {
+        4294967204: (
+            components: {
+                "bevy_camera::visibility::InheritedVisibility": (true),
+                "bevy_camera::visibility::Visibility": Inherited,
+                "bevy_transform::components::transform::Transform": (
+                    translation: (-380.0, 0.0, 0.01),
+                    rotation: (0.0, 0.0, 0.0, 1.0),
+                    scale: (1.0, 1.0, 1.0),
+                ),
+            },
+        ),
+        4294967246: (
+            components: {
+                "bevy_camera::visibility::InheritedVisibility": (true),
+                "bevy_camera::visibility::Visibility": Inherited,
+                "bevy_transform::components::transform::Transform": (
+                    translation: (-120.0, 140.0, 0.0),
+                    rotation: (0.0, 0.0, 0.0, 1.0),
+                    scale: (1.0, 1.0, 1.0),
+                ),
+            },
+        ),
+        4294967247: (
+            components: {
+                "bevy_camera::visibility::InheritedVisibility": (true),
+                "bevy_camera::visibility::Visibility": Inherited,
+                "bevy_transform::components::transform::Transform": (
+                    translation: (120.0, 140.0, 0.0),
+                    rotation: (0.0, 0.0, 0.0, 1.0),
+                    scale: (1.0, 1.0, 1.0),
+                ),
+            },
+        ),
+    },
+)

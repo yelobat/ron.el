@@ -186,16 +186,16 @@ Comments allowed with elements*/ 5, 2] // Trailing comment"))
 ;; Tests: Boolean
 
 (ert-deftest true-test ()
-  (should (eq (with-temp-buffer
+  (should (ron-true-p (with-temp-buffer
                    (save-excursion
                      (insert "/* Leading comment */\n true // Trailing comment"))
-                   (ron-read)) t)))
+                   (ron-read)))))
 
 (ert-deftest false-test ()
-  (should (eq (with-temp-buffer
+  (should (ron-false-p (with-temp-buffer
                    (save-excursion
                      (insert "/* Leading comment */\n false // Trailing comment"))
-                   (ron-read)) ron-false)))
+                   (ron-read)))))
 
 ;; Tests: Identifier
 

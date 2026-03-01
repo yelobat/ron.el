@@ -29,11 +29,41 @@
 
 (require 'map)
 (require 'cl-lib)
+(require 'subr-x)
 
 ;;;; Parameters
 
-(defvar ron-false :ron-false
+(cl-defstruct ron-false
   "Value to use when reading RON `false'.")
+
+(cl-defstruct ron-true
+  "Value to use when reading RON `true'.")
+
+(defvar ron-encoding-default-indentation "  "
+  "String used for a single indentation level during encoding.
+This value is repeated for each further nested element.
+Used only when `ron-encoding-pretty-print' is non-nil.")
+
+(defvar ron--print-indentation-prefix "\n"
+  "String used to start indentation during encoding.
+Used only when `ron-encoding-pretty-print' is non-nil.")
+
+(defvar ron--print-indentation-depth 0
+  "Current indentation level during encoding.
+Dictates repetitions of `ron-encoding-default-indentation'.
+Used only when `ron-encoding-pretty-print' is non-nil.")
+
+(defvar ron-encoding-lisp-style-closings nil
+  "If non-nil, delimiters ], ), and } will be formatted Lisp-style.
+This means they will be placed on the same line as the last
+element of the respective array or object, without indentation.
+Used only when `ron-encoding-pretty-print' is non-nil.")
+
+(defvar ron--print-keyval-separator ":"
+  "String used to separate key-value pairs during encoding.")
+
+(defvar ron-encoding-pretty-print nil
+  "If non-nil, then the output of `ron-encode' will be pretty-printed.")
 
 ;; Error conditions
 
@@ -96,13 +126,6 @@
 (defconst ron--reserved-some
   (macroexpand `(rx (: "Some" (| ron--whitespace-single ?\())))
   "The optional Some reserved tuple variant in RON.")
-
-;; Keyword encoding
-
-(defun ron-encode-keyword (keyword)
-  "Encode KEYWORD as a RON value."
-  (cond ((eq keyword t)  "true")
-        ((eq keyword ron-false)  "false")))
 
 ;;;; Utilities
 
@@ -221,6 +244,15 @@ Advances point just passed the RON object."
     (insert-file-contents file)
     (ron-read)))
 
+;; Writing utilities
+
+(defun ron-write-file (object file &optional minimize)
+  "Write the RON object stored in OBJECT to FILE.
+With prefix argument MINIMIZE, minimize it instead."
+  (with-temp-file file
+      (insert (ron-encode object))
+    (ron-pretty-print-buffer minimize)))
+
 ;; Encoder utilities
 
 (defmacro ron--with-output-to-string (&rest body)
@@ -232,12 +264,34 @@ Return the resulting buffer contents as a string."
        (setq-local inhibit-modification-hooks t)
        ,@body)))
 
+(defmacro ron--with-indentation (&rest body)
+  "Eval BODY with the RON encoding nesting incremented by one step.
+This macro sets up appropriate variable bindings for
+`ron--print-indentation' to produce the correct indentation when
+`ron-encoding-pretty-print' is non-nil."
+  (declare (debug t) (indent 0))
+  `(let ((ron--print-indentation-prefix
+          (if ron-encoding-pretty-print ron--print-indentation-prefix ""))
+         (ron--print-keyval-separator (if ron-encoding-pretty-print ": " ":"))
+         (ron--print-indentation-depth (1+ ron--print-indentation-depth)))
+     ,@body))
+
+(defun ron--print-indentation ()
+  "Insert the current indentation for RON encoding at point.
+Has no effect if `ron-encoding-pretty-print' is nil."
+  (when ron-encoding-pretty-print
+    (insert ron--print-indentation-prefix)
+    (dotimes (_ ron--print-indentation-depth)
+      (insert ron-encoding-default-indentation))))
+
 ;;;; Encoder
 
 (defun ron--print (object)
   "Like `ron-encode', but insert or print the RON OBJECT at point."
   (cond
-   ((ron-encode-keyword object))
+   ((null object) (insert "()"))
+   ((ron-true-p object) (insert "true"))
+   ((ron-false-p object) (insert "false"))
    ((ron-some-p object) (ron--print-some object))
    ((ron-none-p object) (ron--print-none object))
    ((ron-plist-p object) (ron--print-struct object))
@@ -254,6 +308,8 @@ Return the resulting buffer contents as a string."
   "Insert a RON representation of VECTOR at point."
   (insert ?\[)
   (unless (length= vector 0)
+    (ron--with-indentation
+      (ron--print-indentation)
     (let ((first t))
       (mapc (lambda (elt)
               (if first
@@ -261,6 +317,8 @@ Return the resulting buffer contents as a string."
                 (insert ?,))
               (ron--print elt))
             vector)))
+    (or ron-encoding-lisp-style-closings
+        (ron--print-indentation)))
   (insert ?\])
   vector)
 
@@ -268,17 +326,22 @@ Return the resulting buffer contents as a string."
   "Insert a RON representation of ALIST at point."
   (insert ?\()
   (unless (length= alist 0)
-    (let ((first t))
-      (mapc (lambda (elt)
-              (if first
-                  (setq first nil)
-                (insert ?,))
-              (let ((key (car elt))
-                    (value (cdr elt)))
-                (ron--print key)
-                (insert ?:)
-                (ron--print value)))
-            alist)))
+    (ron--with-indentation
+      (ron--print-indentation)
+      (let ((first t))
+        (mapc (lambda (elt)
+                (if first
+                    (setq first nil)
+                  (insert ?,)
+                  (ron--print-indentation))
+                (let ((key (car elt))
+                      (value (cdr elt)))
+                  (ron--print key)
+                  (insert ?:)
+                  (ron--print value)))
+              alist)))
+    (or ron-encoding-lisp-style-closings
+        (ron--print-indentation)))
   (insert ?\))
   alist)
 
@@ -292,20 +355,26 @@ Return the resulting buffer contents as a string."
 (defun ron--print-array (array)
   "Insert a RON representation of ARRAY at point."
   (insert ?\()
-  (let ((first t))
-    (mapc (lambda (elt)
-            (if first
-                (setq first nil)
-              (insert ?,))
-            (ron--print elt))
-          array))
+  (ron--with-indentation
+    (ron--print-indentation)
+    (let ((first t))
+      (mapc (lambda (elt)
+              (if first
+                  (setq first nil)
+                (insert ?,)
+                (ron--print-indentation))
+              (ron--print elt))
+            array)))
+  (or ron-encoding-lisp-style-closings
+      (ron--print-indentation))
   (insert ?\))
   array)
 
 (defun ron--print-pair (key val)
   "Insert a RON representation of KEY VAL pair at point."
+  (ron--print-indentation)
   (ron--print key)
-  (insert ?:)
+  (insert ron--print-keyval-separator)
   (ron--print val)
   (insert ?,))
 
@@ -313,8 +382,11 @@ Return the resulting buffer contents as a string."
   "Insert a RON representation of MAP at point."
   (insert ?{)
   (unless (map-empty-p map)
-    (map-do #'ron--print-pair map)
-    (delete-char (- 1)))
+    (ron--with-indentation
+      (map-do #'ron--print-pair map)
+      (delete-char (- 1)))
+  (or ron-encoding-lisp-style-closings
+      (ron--print-indentation)))
   (insert ?}))
 
 (defun ron--print-string (string)
@@ -719,13 +791,13 @@ If an error is detected during encoding, an error based on
   "Read a RON true value at point."
   ;; Skip 'true'
   (ron-advance 4)
-  t)
+  (make-ron-true))
 
 (defun ron-read-false ()
   "Read a RON false value at point."
   ;; Skip 'false'
   (ron-advance 5)
-  ron-false)
+  (make-ron-false))
 
 ;; Tuple
 ;; See
@@ -877,6 +949,56 @@ If an error is detected during encoding, an error based on
   (prog1 (intern (match-string 0))
   (or (looking-at (rx ron--post-value))
       (signal 'ron-identifier-format (list (point))))))
+
+;;;; Pretty printing & minimizing
+
+(defun ron-pretty-print-buffer (&optional minimize)
+  "Pretty-print current buffer.
+With prefix argument MINIMIZE, minimize it instead."
+  (interactive "P")
+  (ron-pretty-print (point-min) (point-max) minimize))
+
+(defun ron-pretty-print (begin end &optional minimize)
+  "Pretty-print selected region, BEGIN and END.
+With prefix argument MINIMIZE, minimize it instead."
+  (interactive "r\nP")
+  (let ((ron-encoding-pretty-print (null minimize))
+        (orig-buffer (current-buffer))
+        error)
+
+    (with-temp-buffer
+
+      (let ((tmp-buffer (current-buffer)))
+
+        (set-buffer orig-buffer)
+        (replace-region-contents
+         begin end
+         (lambda ()
+
+           (let ((pos (point))
+                 (keep-going t))
+             (while keep-going
+               (condition-case err
+                   (let ((ron (ron-read)))
+                     (setq pos (point))
+                     (set-buffer tmp-buffer)
+                     (insert (ron-encode ron))
+                     (set-buffer orig-buffer))
+                 (t
+
+                  (setq keep-going nil)
+                  (set-buffer orig-buffer)
+
+                  (append-to-buffer tmp-buffer pos (point-max))
+
+                  (unless (eq (car err) 'ron-end-of-file)
+                    (setq error err)))))
+             tmp-buffer))
+         2.0
+         64)))
+
+    (when error
+      (signal (car error) (cdr error)))))
 
 (provide 'ron)
 ;;; ron.el ends here

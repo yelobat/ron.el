@@ -7,9 +7,16 @@ description of [RON](https://github.com/ron-rs/ron/blob/master/docs/grammar.md).
 
 ## Features
 
-Currently it can only parse RON white-space and comments. However, the goal is to
-support the entire specification. It will be able to convert a RON object into an
-Elisp object and vice-versa.
+It can parse successfully parse most RON objects as defined in the grammar above.
+
+It has a few exceptions currently:
+- Not all identifiers are supported.
+- Bytes are not supported.
+
+## Example
+
+To get the general idea of what this package does, an example of this package in
+use can be found in `example.el`.
 
 ## Testing
 
